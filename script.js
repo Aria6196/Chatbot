@@ -3,8 +3,8 @@ const messageInput = document.querySelector(".message-input");
 const sendMessageButton = document.querySelector("#send-message");
 
 //API
-const API_KEY = "AIzaSyDxD-nOCCXTfBKAafeG47NnGkkF2_-LmRE";
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+const API_KEY = "";
+const API_URL = ``;
 
 const userData = {
     message: null
