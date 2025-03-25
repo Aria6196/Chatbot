@@ -1,14 +1,24 @@
 const chatBody = document.querySelector(".chat-body");
 const messageInput = document.querySelector(".message-input");
 const sendMessageButton = document.querySelector("#send-message");
+const fileInput = document.querySelector("#file-input");
+const fileUploadWrapper = document.querySelector(".file-upload-wrapper");
+const fileCancelButton = document.querySelector("#file-cancel");
+
 
 //API
 const API_KEY = "";
 const API_URL = ``;
 
 const userData = {
-    message: null
+    message: null,
+    file : {
+        data: null,
+        mime_type: null
+    }
 }
+
+const chatHistory = [];
 
 //create messages
 const createMessageElement = (content, ...classes) => {
@@ -20,15 +30,19 @@ const createMessageElement = (content, ...classes) => {
 
 //generate bot's response
 const generateBotResponse = async (incomingMessageDiv) => {
-    const messageElement = incomingMessageDiv.querySelector(".message-text")
+    const messageElement = incomingMessageDiv.querySelector(".message-text");
+
+    //add user message to chat history
+    chatHistory.push({
+        role: "user",
+        parts:[{ text: userData.message }, ...(userData.file.data ? [{ inline_data: userData.file }] : [])]
+    });
 
     const requestOptions = {
         method: "POST",
         header: { "Content-Type": "application/json" },
         body: JSON.stringify({
-            contents: [{
-                parts:[{text: userData.message }]
-                }]
+            contents: chatHistory
         })
     }
 
@@ -39,11 +53,25 @@ const generateBotResponse = async (incomingMessageDiv) => {
         if(!response.ok) throw new Error(data.error.message);
 
         //extract and displays bot's response text
-        const apiResponseText = data.candidates[0].content.parts[0].text.trim();
+        const apiResponseText = data.candidates[0].content.parts[0].text.replace(/\*\*(.*?)\*\*/g, "$1").trim();
         messageElement.innerText = apiResponseText;
+
+        //add bot response to chat history
+        chatHistory.push({
+            role: "model",
+            parts:[{ text: userData.message }]
+        });
         
     } catch (error) {
+        //handles error
         console.log(error);
+        messageElement.innerHTML = error.message;
+        messageElement.style.color = "#ff0000";
+    } finally {
+        //resets user's file data, removes thinking animation, scrolls chat to bottom
+        userData.file = {};
+        incomingMessageDiv.classList.remove("thinking");
+        chatBody.scrollTo({ top: chatBody.scrollHeight, behavior: "smooth" });
     }
 }
 
@@ -53,15 +81,16 @@ const handleOutGoingMessage = (e) => {
 
     userData.message = messageInput.value.trim()
     messageInput.value = "";
+    fileUploadWrapper.classList.remove("file-uploaded");
 
     //displays user message
-    const messageContent = `<div class="message-text"></div>`;
+    const messageContent = `<div class="message-text"></div>                             
+                            ${userData.file.data ? `<img src="data:${userData.file.mime_type};base64,${userData.file.data}" class="attachment" />` : ""}`;
 
     const outgoingMessageDiv = createMessageElement(messageContent, "user-message")
-
     outgoingMessageDiv.querySelector(".message-text").textContent = userData.message
-
     chatBody.appendChild(outgoingMessageDiv);
+    chatBody.scrollTo({ top: chatBody.scrollHeight, behavior: "smooth" });
 
     //bot thinking message animation
     setTimeout(() => {
@@ -77,8 +106,8 @@ const handleOutGoingMessage = (e) => {
                 </div>`;
 
         const incomingMessageDiv = createMessageElement(messageContent, "bot-message", "thinking")
-    
         chatBody.appendChild(incomingMessageDiv);
+        chatBody.scrollTo({ top: chatBody.scrollHeight, behavior: "smooth" });
         generateBotResponse(incomingMessageDiv);
     }, 600)
 }
@@ -91,4 +120,55 @@ messageInput.addEventListener("keydown", (e) => {
     }
 });
 
-sendMessageButton.addEventListener("click", (e) => handleOutGoingMessage(e))
+//handles file input change
+fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        fileUploadWrapper.querySelector("img").src = e.target.result;
+        fileUploadWrapper.classList.add("file-uploaded");
+        const base64String = e.target.result.split(",")[1];
+
+        //stores file data in userData
+        userData.file = {
+            data: base64String,
+            mime_type: file.type
+        }
+        
+        fileInput.value = "";
+    }
+    
+    reader.readAsDataURL(file);
+});
+
+//cancels file upload
+fileCancelButton.addEventListener("click", () => {
+    userData.file = {};
+    fileUploadWrapper.classList.remove("file-uploaded");
+})
+
+//emoji picker
+const picker = new EmojiMart.Picker({
+    theme: "light",
+    skinTonePosition: "none",
+    previewPosition: "none",
+    onEmojiSelect: (emoji) => {
+        const { selectionStart: start, selectionEnd: end } = messageInput;
+        messageInput.setRangeText(emoji.native, start, end, "end");
+        messageInput.focus();
+    },
+    onClickOutside: (e) => {
+        if (e.target.id === "emoji-picker"){
+            document.body.classList.toggle("show-emoji-picker");
+        } else {
+            document.body.classList.remove("show-emoji-picker");
+        }
+    }
+});
+
+document.querySelector(".chat-form").appendChild(picker);
+
+sendMessageButton.addEventListener("click", (e) => handleOutGoingMessage(e));
+document.querySelector("#file-upload").addEventListener("click", () => fileInput.click())
